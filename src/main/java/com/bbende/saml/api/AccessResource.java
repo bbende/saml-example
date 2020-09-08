@@ -73,7 +73,7 @@ public class AccessResource {
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.TEXT_PLAIN)
     @Path("saml/callback")
-    public Response oidcCallback(@Context final HttpServletRequest httpServletRequest,
+    public Response samlCallback(@Context final HttpServletRequest httpServletRequest,
                                  @Context final HttpServletResponse httpServletResponse,
                                  @FormParam("SAMLResponse") final String samlResponseFormParam,
                                  @FormParam("RelayState") final String relayStateFormParam) throws Exception {
