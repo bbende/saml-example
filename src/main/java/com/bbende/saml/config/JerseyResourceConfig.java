@@ -1,6 +1,7 @@
 package com.bbende.saml.config;
 
 import com.bbende.saml.api.AccessResource;
+import com.bbende.saml.api.ProtectedResource;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.servlet.ServletProperties;
@@ -16,6 +17,7 @@ public class JerseyResourceConfig extends ResourceConfig {
 
         // register resources
         register(AccessResource.class);
+        register(ProtectedResource.class);
 
         // include bean validation errors in response
         property(ServerProperties.BV_SEND_ERROR_IN_RESPONSE, true);

@@ -1,4 +1,4 @@
-package com.bbende.saml.service;
+package com.bbende.saml.security;
 
 import com.bbende.saml.config.SamlProperties;
 import com.coveo.saml.SamlClient;
@@ -120,6 +120,10 @@ public class SamlService {
 
         final SamlResponse samlResponse = samlClient.decodeAndValidateSamlResponse(encodedSamlResponse, HttpMethod.POST);
         return samlResponse.getNameID();
+    }
+
+    public void logout() {
+
     }
 
     private synchronized SamlClient getSamlClient(final String callbackUrl) throws Exception {

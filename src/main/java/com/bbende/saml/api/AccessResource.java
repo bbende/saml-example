@@ -1,8 +1,9 @@
 package com.bbende.saml.api;
 
-import com.bbende.saml.service.SamlService;
+import com.bbende.saml.security.SamlService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.servlet.http.Cookie;
@@ -16,6 +17,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
@@ -35,6 +37,9 @@ public class AccessResource {
 
     @Context
     private UriInfo uriInfo;
+
+    @Value("${security.authentication.cookie.name}")
+    private String authenticationCookieName;
 
     private final SamlService samlService;
 
@@ -103,8 +108,24 @@ public class AccessResource {
                     .build();
         }
 
-        // NOTE: here is where you would create an application specific JWT
-        return Response.ok(userIdentity).build();
+        // NOTE: Normally in a real application we would create a JWT for the user, but to keep this example simple
+        // we will create a Cookie and then check for it's presence in SimpleAuthenticationFilter
+        setAuthenticationCookie(httpServletResponse, userIdentity, 300);
+
+        return Response.ok("Successfully logged in as '" + userIdentity + "'").build();
+    }
+
+    @POST
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.WILDCARD)
+    @Path("saml/logout")
+    public Response samlLogout(@Context final HttpServletRequest httpServletRequest,
+                               @Context final HttpServletResponse httpServletResponse) throws Exception {
+
+        // Remove our simple authentication Cookie
+        setAuthenticationCookie(httpServletResponse, null, 0);
+
+        return null;
     }
 
     // --- Helper methods
@@ -133,7 +154,15 @@ public class AccessResource {
     }
 
     private void setSamlRequestCookie(final HttpServletResponse httpServletResponse, final String value, int exp) {
-        final Cookie cookie = new Cookie(SAML_REQUEST_IDENTIFIER, value);
+        setCookie(httpServletResponse, SAML_REQUEST_IDENTIFIER, value, exp);
+    }
+
+    private void setAuthenticationCookie(final HttpServletResponse httpServletResponse, final String value, int exp) {
+        setCookie(httpServletResponse,  authenticationCookieName, value, exp);
+    }
+
+    private void setCookie(HttpServletResponse httpServletResponse, String cookieName, String value, int exp) {
+        final Cookie cookie = new Cookie(cookieName, value);
         cookie.setPath("/");
         cookie.setHttpOnly(true);
         cookie.setMaxAge(exp);
