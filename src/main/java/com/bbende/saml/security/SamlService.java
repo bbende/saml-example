@@ -1,6 +1,7 @@
 package com.bbende.saml.security;
 
 import com.bbende.saml.config.SamlProperties;
+import com.coveo.saml.BrowserUtils;
 import com.coveo.saml.SamlClient;
 import com.coveo.saml.SamlResponse;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.math.BigInteger;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -98,8 +100,8 @@ public class SamlService {
      * @param relayState the state value to relay to the idp
      * @throws Exception if an error occurs creating a SamlClient
      */
-    public void redirectToIdentityProvider(final HttpServletResponse response, final String callbackUrl,
-                                           final String relayState) throws Exception {
+    public void sendLoginRequest(final HttpServletResponse response, final String callbackUrl, final String relayState)
+            throws Exception {
         final SamlClient samlClient = getSamlClient(callbackUrl);
         samlClient.redirectToIdentityProvider(response, relayState);
     }
@@ -122,19 +124,38 @@ public class SamlService {
         return samlResponse.getNameID();
     }
 
-    public void logout() {
+    public void sendLogoutRequest(final HttpServletResponse response, final String userIdentity,
+                                  final String callbackUrl, final String relayState) throws Exception {
 
+        final String singleLogoutUrl = "https://idp.ssocircle.com:443/sso/IDPSloPost/metaAlias/publicidp";
+
+        final SamlClient samlClient = getSamlClient(callbackUrl);
+        final String logoutRequest = samlClient.getLogoutRequest(userIdentity);
+
+        Map<String, String> values = new HashMap<>();
+        values.put("SAMLRequest", logoutRequest);
+        if (relayState != null) {
+            values.put("RelayState", relayState);
+        }
+
+        BrowserUtils.postUsingBrowser(singleLogoutUrl, response, values);
+
+        //samlClient.redirectToIdentityProvider(response, relayState, userIdentity);
     }
 
     private synchronized SamlClient getSamlClient(final String callbackUrl) throws Exception {
         SamlClient samlClient = samlClientLookup.get(callbackUrl);
 
         if (samlClient == null) {
-            final String clientId = samlProperties.getClientId();
-            final URL idpMetadataUrl = new URL(samlProperties.getIdpMetadataUrl());
             LOGGER.debug("Creating new SamlClient for callback url '{}'", new Object[]{callbackUrl});
 
-            try (final InputStream idpMetadataIn = idpMetadataUrl.openStream();
+            final String clientId = samlProperties.getClientId();
+            LOGGER.debug("Client id is '{}'", new Object[]{samlProperties.getClientId()});
+
+            final URI idpMetadataUrl = new URI(samlProperties.getIdpMetadataUrl());
+            LOGGER.debug("IDP Metadata URL is '{}'", new Object[]{samlProperties.getIdpMetadataUrl()});
+
+            try (final InputStream idpMetadataIn = idpMetadataUrl.toURL().openStream();
                  final Reader ipdMetadataReader = new InputStreamReader(idpMetadataIn)) {
                 samlClient = SamlClient.fromMetadata(clientId, callbackUrl, ipdMetadataReader);
                 samlClientLookup.put(callbackUrl, samlClient);

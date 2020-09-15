@@ -4,6 +4,8 @@ import com.bbende.saml.security.SamlService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import javax.servlet.http.Cookie;
@@ -17,7 +19,6 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
@@ -52,7 +53,7 @@ public class AccessResource {
     @GET
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.WILDCARD)
-    @Path("saml/request")
+    @Path("saml/login/request")
     public void samlRequest(@Context final HttpServletRequest servletRequest,
                             @Context final HttpServletResponse servletResponse) throws Exception {
 
@@ -66,10 +67,8 @@ public class AccessResource {
         // initialize the state for this request
         final String state = samlService.createState(samlRequestIdentifier);
 
-        // redirect to the idp
-        final String callbackUrl = generateResourceUri("access", "saml", "callback");
-        LOGGER.debug("Redirecting to identity provider with callback url '{}'", new Object[]{callbackUrl});
-        samlService.redirectToIdentityProvider(servletResponse, callbackUrl, state);
+        // send login request to the idp
+        samlService.sendLoginRequest(servletResponse, getLoginCallbackUrl(), state);
     }
 
     // called by the IDP to process the SAML response
@@ -77,8 +76,8 @@ public class AccessResource {
     @POST
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.TEXT_PLAIN)
-    @Path("saml/callback")
-    public Response samlCallback(@Context final HttpServletRequest httpServletRequest,
+    @Path("saml/login/callback")
+    public Response samlLoginCallback(@Context final HttpServletRequest httpServletRequest,
                                  @Context final HttpServletResponse httpServletResponse,
                                  @FormParam("SAMLResponse") final String samlResponseFormParam,
                                  @FormParam("RelayState") final String relayStateFormParam) throws Exception {
@@ -92,8 +91,7 @@ public class AccessResource {
         }
 
         // process the SAML response and extract the user identity
-        final String callbackUrl = generateResourceUri("access", "saml", "callback");
-        final String userIdentity = samlService.processSamlResponse(samlResponseFormParam, callbackUrl);
+        final String userIdentity = samlService.processSamlResponse(samlResponseFormParam, getLoginCallbackUrl());
         LOGGER.debug("Processed SAML Response, user identity = '{}'", new Object[]{userIdentity});
 
         // verify the correct state was sent back
@@ -110,25 +108,62 @@ public class AccessResource {
 
         // NOTE: Normally in a real application we would create a JWT for the user, but to keep this example simple
         // we will create a Cookie and then check for it's presence in SimpleAuthenticationFilter
-        setAuthenticationCookie(httpServletResponse, userIdentity, 300);
+        setAuthenticationCookie(httpServletResponse, userIdentity, 600);
 
         return Response.ok("Successfully logged in as '" + userIdentity + "'").build();
     }
 
-    @POST
+    // initiates a logout request to the identity provider
+
+    @GET
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.WILDCARD)
-    @Path("saml/logout")
-    public Response samlLogout(@Context final HttpServletRequest httpServletRequest,
+    @Path("saml/logout/request")
+    public void samlLogout(@Context final HttpServletRequest httpServletRequest,
                                @Context final HttpServletResponse httpServletResponse) throws Exception {
+
+        // get the identity of the current user to be logged out
+        final Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        final String currentUser = authentication.getName();
+
+        // send logout request to the idp
+        samlService.sendLogoutRequest(httpServletResponse, currentUser, getLogoutCallbackUrl(), null);
+
+        // Remove our simple authentication Cookie
+        // TODO move this to the callback?
+        //setAuthenticationCookie(httpServletResponse, null, 0);
+
+        //return Response.ok("Successfully logged out").build();
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("saml/logout/callback")
+    public Response samlLogoutCallback(@Context final HttpServletRequest httpServletRequest,
+                                 @Context final HttpServletResponse httpServletResponse,
+                                 @FormParam("SAMLResponse") final String samlResponseFormParam,
+                                 @FormParam("RelayState") final String relayStateFormParam) throws Exception {
+
+        LOGGER.debug("RECEIVED LOGOUT CALLBACK");
+        // TODO process SAMLResponse
 
         // Remove our simple authentication Cookie
         setAuthenticationCookie(httpServletResponse, null, 0);
 
-        return null;
+        return Response.ok().build();
     }
 
     // --- Helper methods
+
+    private String getLoginCallbackUrl() {
+        return generateResourceUri("access", "saml", "login", "callback");
+    }
+
+    private String getLogoutCallbackUrl() {
+        return generateResourceUri("access", "saml", "logout", "callback");
+    }
+
 
     private String generateResourceUri(final String... path) {
         URI uri = buildResourceUri(path);
